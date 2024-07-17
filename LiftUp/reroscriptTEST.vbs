@@ -18,8 +18,6 @@ Set dev = prj.CreateDeviceObject
 Set pin1 = prj.CreatePinObject
 Set pin2 = prj.CreatePinObject
 Set pin = prj.CreatePinObject
-Set uplist = CreateObject("Scripting.Dictionary")
-Set lplist = CreateObject("Scripting.Dictionary")
 Set con = prj.CreateConnectionObject
 
 ' Create the XML DOM object
@@ -85,11 +83,23 @@ For i = 0 To row_count - 1
     Set signalRows(i) = newSignalRow
 
     ' Display the details of the new signalRow object
-    WScript.Echo "Number: " & signalRows(i).Number & ", Signal Name: " & signalRows(i).SignalName & ", Signal Type: " & signalRows(i).SignalType & ", Signal Category: " & signalRows(i).SignalCategory & ", Current Max: " & signalRows(i).CurrentMax & ", Cable Type: " & signalRows(i).CableType & ", Cable AWG: " & signalRows(i).CableAwg & ", Source ATA: " & signalRows(i).SourceAta & ", Source Pin Name: " & signalRows(i).SourcePinName & ", Source Location: " & signalRows(i).SourceLocation & ", Source LRU: " & signalRows(i).SourceLRU & ", Source RD Number: " & signalRows(i).SourceRdNumber & ", Source Connector: " & signalRows(i).SourceConnector & ", Source Pin No: " & signalRows(i).SourcePinNo & ", Destination ATA: " & signalRows(i).DestinationAta & ", Destination Pin Name: " & signalRows(i).DestinationPinName & ", Destination Location: " & signalRows(i).DestinationLocation & ", Destination LRU: " & signalRows(i).DestinationLRU & ", Destination RD Number: " & signalRows(i).DestinationRdNumber & ", Destination Connector: " & signalRows(i).DestinationConnector & ", Destination Pin No: " & signalRows(i).DestinationPinNo
+    'WScript.Echo "Number: " & signalRows(i).Number & ", Signal Name: " & signalRows(i).SignalName & ", Signal Type: " & signalRows(i).SignalType & ", Signal Category: " & signalRows(i).SignalCategory & ", Current Max: " & signalRows(i).CurrentMax & ", Cable Type: " & signalRows(i).CableType & ", Cable AWG: " & signalRows(i).CableAwg & ", Source ATA: " & signalRows(i).SourceAta & ", Source Pin Name: " & signalRows(i).SourcePinName & ", Source Location: " & signalRows(i).SourceLocation & ", Source LRU: " & signalRows(i).SourceLRU & ", Source RD Number: " & signalRows(i).SourceRdNumber & ", Source Connector: " & signalRows(i).SourceConnector & ", Source Pin No: " & signalRows(i).SourcePinNo & ", Destination ATA: " & signalRows(i).DestinationAta & ", Destination Pin Name: " & signalRows(i).DestinationPinName & ", Destination Location: " & signalRows(i).DestinationLocation & ", Destination LRU: " & signalRows(i).DestinationLRU & ", Destination RD Number: " & signalRows(i).DestinationRdNumber & ", Destination Connector: " & signalRows(i).DestinationConnector & ", Destination Pin No: " & signalRows(i).DestinationPinNo
 Next
 
 ' Initialize a dictionary to store Block objects by name
 Set blocks = CreateObject("Scripting.Dictionary")
+
+' Initialize a dictionary to store pins by connector groups dynamically
+Set connectorGroups = CreateObject("Scripting.Dictionary")
+
+' Define a function to determine or create the group for the connector
+Function GetOrCreateConnectorGroup(connectorName)
+    If Not connectorGroups.Exists(connectorName) Then
+        Set pinList = CreateObject("Scripting.Dictionary")
+        connectorGroups.Add connectorName, pinList
+    End If
+    Set GetOrCreateConnectorGroup = connectorGroups(connectorName)
+End Function
 
 ' Iterate through the signalRows to create Blocks and Pins
 For i = 0 To UBound(signalRows)
@@ -119,65 +129,119 @@ For i = 0 To UBound(signalRows)
     cPin.SourcePinID = sr.SourcePinNo
     Set cPin.DestinationBlock = destinationBlock
     cPin.DestinationPinID = sr.DestinationPinNo
+
+    ' Add the Pin to the appropriate connector group list dynamically
+    connectorName = sr.SourceConnector
+    Set pinList = GetOrCreateConnectorGroup(connectorName)
+    pinList.Add cPin.SourcePinID, cPin
+
     ' Add the Pin to the SourceBlock
     sourceBlock.AddPin cPin
     destinationBlock.AddPin cPin
 Next
 
-' Display blocks and pins information for verification
-For Each key In blocks.Keys
-    Set blk = blocks(key)
-    WScript.Echo "Block Name: " & blk.Name
-    For Each pinKey In blk.Pins.Keys
-        Set pin = blk.Pins(pinKey)
-        WScript.Echo "  Pin " & pinKey & ": " & pin.SourceBlock.Name & " - " & pin.SourcePinID & " to " & pin.DestinationBlock.Name & " - " & pin.DestinationPinID
-    Next
-Next
+' Function to create connector and place pins
+Sub CreateConnectorAndPlacePins(connectorName, pinList, x, y, pinIdList, unique)
+    dev.Create connectorName, "", "", connectorName, "CCCC", 0 
+    If dev.IsConnector Then
+        pincnt = dev.GetAllPinIds(pinids)
+        ' Use only the number of pins in pinList
+        For i = 0 To pinList.Count
+            sym.PlacePins pinids(i), "", 0, Sht.GetId, x, y + i * 8, 0
+            pinIdList.Add unique, pinids(i) ' Add to pinIdList for connection
+            unique = unique + 1
+        Next
+    End If
+End Sub
 
-pcnt = 1
-
-Dim xarr(2)
-Dim yarr(2)
+' Initial coordinates
+Dim xCoord, yCoord, unique
+xCoord = 110
+unique = 1
 
 If prj.GetId = 0 Then
     prj.Create "Test"
 End If
 sht.create 0, "1", "DINA3", 0, 0
 
-' Initialize a variable to track the vertical position of the blocks
-Dim verticalPosition
-verticalPosition = 200 ' Initial vertical position
-
-' Iterate through the blocks to position them and calculate height
 blocklocator = 1
 
+' Initialize lists for pin connections
+Set uplist = CreateObject("Scripting.Dictionary")
+Set lplist = CreateObject("Scripting.Dictionary")
 
+Dim xarr(2)
+Dim yarr(2)
 
+unique = 1
+' Iterate through each block and place connectors and pins
 For Each key In blocks.Keys
+    yCoord = 150
     Set blk = blocks(key)
+    WScript.Echo "Block Name: " & blk.Name
     ' Calculate the height of the block based on pin count
     blockHeight = blk.Pins.Count * 10
 
     customName = "MyCustomName" & blocklocator
 
-
-
-    ' Create a new block device CreateBlock ( [name][, assignment][, location][, cmpname][, version][, filename]] )
-    dev.CreateBlock blk.Name, "", "", "", "", ""
-
-    'dev.CreateConnectorOnBlockEx dev.GetId, "", "", "", "", ""
-    WScript.Echo blk.Name
-    ' Place the block at the current vertical position
+    ' Place the block at the current coordinates
     sym.Load "DEFBLOCK", "1"
     sym.PlaceBlock Sht.GetId, blocklocator * 80, 150, 30, blockHeight
-    sym.AssingTo dev.GetId, 1
     sym.SetDeviceCompleteName blk.Name, "", ""
 
-    
-    
-    ' Update the vertical position for the next block
-    verticalPosition = verticalPosition + blockHeight + 50
+    ' Iterate through each connector group and place pins
+    For Each connectorName In connectorGroups.Keys
+        
+        Set pinList = connectorGroups(connectorName)
+        ' Adjust the coordinates for each connector group
+        
+        If blocklocator = 1 Then
+            CreateConnectorAndPlacePins connectorName, pinList, xCoord, yCoord, uplist, unique
+        ElseIf blocklocator = 2 Then
+            CreateConnectorAndPlacePins connectorName, pinList, xCoord, yCoord, lplist, unique
+        End If
+
+        yCoord = yCoord + pinList.Count * 8
+    Next
+
+    ' Update the coordinates for the next block
+    xCoord = xCoord + 50
+    yCoord = yCoord + blockHeight + 50
     blocklocator = blocklocator + 1
 Next
 
+' Populate lplist from existing pins (example approach)
+' Assuming lplist should be populated similar to uplist but for destination pins
+
+' Print uplist and lplist elements
+For Each key In uplist.Keys
+    WScript.Echo "uplist: " & uplist(key)
+Next
+
+For Each key In lplist.Keys
+    WScript.Echo "lplist: " & lplist(key)
+Next
+
+' Create connections between pins
+For i = 0 To uplist.Count - 1
+    WScript.Echo i
+    pin1.SetId uplist.Items()(i)
+    pin2.SetId lplist.Items()(i)
+
+    pin1.GetSchemaLocation xarr(1), yarr(1), grid
+    pin2.GetSchemaLocation xarr(2), yarr(2), grid
+    con.Create sht.GetId, 2, xarr, yarr
+Next
+
 sht.display
+
+' Display connector groups information for verification
+For Each connectorName In connectorGroups.Keys
+    WScript.Echo "Connector: " & connectorName
+    Set pinList = connectorGroups(connectorName)
+    For Each pinID In pinList.Keys
+        Set pin = pinList(pinID)
+        WScript.Echo "  Pin " & pinID & ": " & pin.SourceBlock.Name & " - " & pin.SourcePinID & " to " & pin.DestinationBlock.Name & " - " & pin.DestinationPinID
+    Next
+Next
+
