@@ -3,7 +3,7 @@
 sistem son hale gelene kadar yazılı bir biçim üzerinde çalışılır,
 tamamlandıktan sonra ise bir teknik çizim programında el ile
 çizilir. Yapılan bu çizim işlemi yüksek seviyede dikkat ve zaman
-gerektirir, bir sistemin çizimi bazen günler alabilir ve yapılan tek
+gerektirir bir sistemin çizimi bazen günler alabilir ve yapılan tek
 bir hata saatlere mal olabilir. Bu çalışmada, Excel dosyası
 formatında verilen ve yazılı biçimde oluşturulan devre Visual
 Basic Script programı ile Zuken E3 çizim programına dışarıdan
